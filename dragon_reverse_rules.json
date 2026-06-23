@@ -1,0 +1,421 @@
+{
+  "schema_version": 1,
+  "name": "Dragon Reverse knowledge base",
+  "source_notes": [
+    "Local corpus: Driver vulnerable, Driver suspect, Driver to test.",
+    "Public corpus model: LOLDrivers Living Off The Land Drivers. The plugin can optionally fetch https://www.loldrivers.io/api/drivers.json at runtime.",
+    "Rules produce triage hypotheses for authorized vulnerability research. They do not generate payloads or exploitation steps."
+  ],
+  "known_hashes": {
+    "e4658d93544f69f5cb9aa6d9fec420fecc8750cb57e1e9798da38c139d44f2eb": {
+      "name": "AsmIo64.sys",
+      "family": "ASMedia low-level IO",
+      "class": "Vulnerable driver",
+      "notes": "Known BYOVD-style hardware access driver. Prioritize IOCTL access control, port IO, physical mapping, and MSR-like primitives."
+    },
+    "4bf974f5d3489638a48ee508b4a8cfa0f0262909778ccdd2e871172b71654d89": {
+      "name": "AsrDrv.sys",
+      "family": "ASRock hardware utility",
+      "class": "Vulnerable driver",
+      "notes": "Known vulnerable hardware utility class. Prioritize weak device ACLs, IOCTL handlers, physical memory mapping, and registry writes."
+    },
+    "b93020428f6d9ca700ab70a14911c7efcbcb1f9b659054add0dd3e7657511eb3": {
+      "name": "devMemDrv.sys",
+      "family": "Physical memory access",
+      "class": "Vulnerable driver",
+      "notes": "Physical memory access class. Prioritize MmMapIoSpace paths and user-controlled physical address selection."
+    },
+    "70c9f9e8dcbba700e0fc20e6ae9b4c5df98326cf212ac8794fc8ee9a46e948c4": {
+      "name": "Driver_win10.sys",
+      "family": "Generic vulnerable driver sample",
+      "class": "Vulnerable driver",
+      "notes": "Known vulnerable sample in the local corpus. Use as a similarity seed for IOCTL and memory primitive patterns."
+    },
+    "4429f32db1cc70567919d7d47b844a91cf1329a6cd116f582305f3b7b60cd60b": {
+      "name": "iqvw64e.sys",
+      "family": "Intel network utility driver",
+      "class": "Vulnerable driver",
+      "notes": "Frequently abused BYOVD driver class. Prioritize arbitrary kernel memory access, physical mapping, and weak IOCTL access checks.",
+      "device_paths": ["\\\\.\\Nal"]
+    },
+    "19a212e6fc324f4cb9ee5eba60f5c1fc0191799a4432265cbeaa3307c76a7fc0": {
+      "name": "Phymemx64.sys",
+      "family": "Physical memory access",
+      "class": "Vulnerable driver",
+      "notes": "Physical memory driver class. Prioritize mapping APIs and caller-controlled physical ranges."
+    },
+    "03e0581432f5c8cc727a8aa387f5b69ff84d38d0df6f1226c19c6e960a81e1e9": {
+      "name": "RTCore64.sys",
+      "family": "MSI low-level hardware driver",
+      "class": "Vulnerable driver",
+      "notes": "Known BYOVD hardware driver class. Prioritize privileged read/write primitives, IOCTL access checks, and trust boundaries."
+    },
+    "26f41e4268be59f5de07552b51fa52d18d88be94f8895eb4a16de0f3940cf712": {
+      "name": "VBoxDrv.sys",
+      "family": "Virtualization driver sample",
+      "class": "Vulnerable driver",
+      "notes": "Local vulnerable corpus sample. Prioritize exposed device objects, IOCTL authorization, and kernel object reference patterns."
+    },
+    "412564937dea61ad443a3f50a0f7586aed1bf68795e9af184606804357499cea": {
+      "name": "whql.sys",
+      "family": "WHQL signed vulnerable sample",
+      "class": "Vulnerable driver",
+      "notes": "Local vulnerable corpus sample. Use as a signed-driver similarity seed."
+    },
+    "2628245d7886268f79b80907d364a6139312cfbc9d013ad9bfbd94c76fb49f6b": {
+      "name": "ipt.sys",
+      "family": "Intel Processor Trace inbox driver",
+      "class": "Local research case",
+      "notes": "Local case: world-readable device plus privileged registry/service-key writes and Intel PT MSR programming. Prioritize weak device ACL, FILE_ANY_ACCESS wrappers, registry writes, and WRMSR/RDMSR paths."
+    }
+  },
+  "families": [
+    {
+      "id": "physmem_map",
+      "name": "Physical memory mapping primitive",
+      "description": "Driver maps physical memory or locked pages and may accept ranges from IOCTL/session state.",
+      "signals": ["MmMapIoSpace", "MmMapIoSpaceEx", "MmMapLockedPagesSpecifyCache", "MmGetPhysicalAddress", "MmAllocateContiguousMemory", "MmAllocateContiguousNodeMemory"],
+      "min_hits": 1,
+      "negative_signals": ["IoValidateDeviceIoControlAccess", "SeSinglePrivilegeCheck", "SePrivilegeCheck"],
+      "score": 22,
+      "review": "Trace callers from IOCTL dispatchers to the mapping API. Verify address origin, range validation, ownership, cache type, and caller privilege checks."
+    },
+    {
+      "id": "msr_control",
+      "name": "MSR programming primitive",
+      "description": "Driver reads or writes CPU model-specific registers from IOCTL-reachable code.",
+      "signals": ["wrmsr", "rdmsr", "__writemsr", "__readmsr"],
+      "min_hits": 1,
+      "negative_signals": ["SeSinglePrivilegeCheck", "IoValidateDeviceIoControlAccess"],
+      "score": 24,
+      "review": "Locate WRMSR/RDMSR callers. Verify allowed MSR indexes, value masks, per-session ownership, and access requirements."
+    },
+    {
+      "id": "port_io",
+      "name": "Raw port or MMIO access primitive",
+      "description": "Driver exposes raw port IO or register IO to callers.",
+      "signals": ["READ_PORT", "WRITE_PORT", "READ_REGISTER", "WRITE_REGISTER", "inp", "outp", "in", "out"],
+      "min_hits": 1,
+      "negative_signals": ["SeSinglePrivilegeCheck", "IoValidateDeviceIoControlAccess"],
+      "score": 14,
+      "review": "Check whether port/register offsets and widths are caller-controlled. Verify device ownership and privilege gates."
+    },
+    {
+      "id": "registry_service_write",
+      "name": "Privileged service-key registry write",
+      "description": "Driver writes HKLM service configuration or other privileged registry state.",
+      "signals": ["ZwOpenKey", "ZwCreateKey", "ZwSetValueKey", "RtlWriteRegistryValue", "SYSTEM\\\\CurrentControlSet\\\\Services", "Registry\\\\Machine\\\\System"],
+      "min_hits": 1,
+      "negative_signals": ["SeSinglePrivilegeCheck", "IoValidateDeviceIoControlAccess"],
+      "score": 18,
+      "review": "Check if a low-privileged device handle can cause privileged registry writes. Compare caller rights with driver-side writes."
+    },
+    {
+      "id": "weak_device_acl",
+      "name": "Weak device object exposure",
+      "description": "Driver creates a symbolic link or device object without clear secure ACL enforcement.",
+      "signals": ["IoCreateDevice", "IoCreateSymbolicLink", "\\\\DosDevices\\\\", "\\\\Device\\\\"],
+      "min_hits": 1,
+      "negative_signals": ["IoCreateDeviceSecure", "SeSinglePrivilegeCheck", "IoValidateDeviceIoControlAccess"],
+      "score": 14,
+      "review": "Recover the SDDL or default DACL. Verify whether Everyone/World can open the device and what access is required for each IOCTL."
+    },
+    {
+      "id": "method_neither_user_pointer",
+      "name": "METHOD_NEITHER or user-pointer trust",
+      "description": "Driver may dereference caller pointers or copy buffers without consistent probing and bounds validation.",
+      "signals": ["METHOD_NEITHER", "Type3InputBuffer", "UserBuffer", "ProbeForRead", "ProbeForWrite", "memcpy", "memmove", "RtlCopyMemory"],
+      "min_hits": 1,
+      "negative_signals": ["ProbeForRead", "ProbeForWrite", "try", "__try"],
+      "score": 18,
+      "review": "Inspect pointer provenance, try/except guards, buffer lengths, IOCTL method, and caller mode checks."
+    },
+    {
+      "id": "kernel_memory_rw",
+      "name": "Kernel memory read/write primitive",
+      "description": "Driver references processes, sections, MDLs, or memory copy APIs in IOCTL-reachable paths.",
+      "signals": ["MmCopyVirtualMemory", "MmCopyMemory", "ZwMapViewOfSection", "ZwOpenSection", "IoAllocateMdl", "MmProbeAndLockPages", "MmMapLockedPagesSpecifyCache", "PsLookupProcessByProcessId", "ObReferenceObjectByHandle"],
+      "min_hits": 1,
+      "negative_signals": ["SeSinglePrivilegeCheck", "IoValidateDeviceIoControlAccess"],
+      "score": 20,
+      "review": "Trace whether source/destination address, process, section, or MDL parameters are caller-controlled and access-checked."
+    },
+    {
+      "id": "file_any_access_ioctl",
+      "name": "FILE_ANY_ACCESS IOCTL surface",
+      "description": "One or more IOCTL constants decode to FILE_ANY_ACCESS, often widening reachability.",
+      "signals": ["FILE_ANY_ACCESS", "IOCTL_ANY_ACCESS"],
+      "min_hits": 1,
+      "negative_signals": ["IoValidateDeviceIoControlAccess"],
+      "score": 12,
+      "review": "Decode IOCTLs. Privileged operations should require read/write access or explicit privilege checks, not FILE_ANY_ACCESS alone."
+    },
+    {
+      "id": "mdl_dma_surface",
+      "name": "MDL, DMA, or locked-page exposure",
+      "description": "Driver builds or maps MDLs, DMA buffers, scatter/gather lists, or contiguous memory that may cross trust boundaries.",
+      "signals": ["IoAllocateMdl", "MmProbeAndLockPages", "MmBuildMdlForNonPagedPool", "MmMapLockedPagesSpecifyCache", "GetScatterGatherList", "PutScatterGatherList", "AllocateCommonBuffer", "MmAllocateContiguousMemory", "MmAllocateContiguousNodeMemory"],
+      "min_hits": 2,
+      "negative_signals": ["ProbeForRead", "ProbeForWrite", "IoValidateDeviceIoControlAccess", "SeSinglePrivilegeCheck"],
+      "score": 20,
+      "review": "Check whether the caller controls virtual addresses, lengths, process context, DMA direction, cache type, or mapping lifetime."
+    },
+    {
+      "id": "process_token_sensitive",
+      "name": "Process, token, or handle-sensitive operations",
+      "description": "Driver references process, token, thread, or handle objects in ways that can become EoP when caller-controlled.",
+      "signals": ["PsLookupProcessByProcessId", "PsReferencePrimaryToken", "PsDereferencePrimaryToken", "ZwOpenProcess", "ZwOpenThread", "ObOpenObjectByPointer", "ObReferenceObjectByHandle", "SeAssignSecurity", "SeAccessCheck", "EPROCESS"],
+      "min_hits": 1,
+      "negative_signals": ["SeSinglePrivilegeCheck", "SePrivilegeCheck", "ExGetPreviousMode", "IoValidateDeviceIoControlAccess"],
+      "score": 22,
+      "review": "Trace PID/handle/token inputs from IOCTL buffers. Verify desired access, object type, AccessMode, PreviousMode, and privilege checks."
+    },
+    {
+      "id": "process_kill",
+      "name": "Process termination or protection bypass",
+      "description": "Driver exposes or contains process termination, suspend, callback tamper, or protection-bypass behavior that may be abused against security tools.",
+      "signals": ["ZwTerminateProcess", "TerminateProcess", "PsTerminateSystemThread", "PROCESS_TERMINATE", "ZwOpenProcess", "PsLookupProcessByProcessId", "ObReferenceObjectByHandle", "PsSetCreateProcessNotifyRoutine", "ObRegisterCallbacks"],
+      "min_hits": 2,
+      "negative_signals": ["SeSinglePrivilegeCheck", "SePrivilegeCheck", "IoValidateDeviceIoControlAccess", "SeAccessCheck", "ExGetPreviousMode"],
+      "score": 20,
+      "review": "Confirm caller-controlled PID/handle and missing authorization. For dynamic proof, use only a harmless owned process before making protected-process claims."
+    },
+    {
+      "id": "security_descriptor_write",
+      "name": "Security descriptor or DACL modification",
+      "description": "Driver creates or modifies object ACLs, security descriptors, or grants access to device/service objects.",
+      "signals": ["ZwSetSecurityObject", "RtlSetDaclSecurityDescriptor", "RtlCreateSecurityDescriptor", "RtlAddAccessAllowedAce", "SeCaptureSecurityDescriptor", "SeAssignSecurity", "IoCreateDeviceSecure", "D:P", "A;;"],
+      "min_hits": 1,
+      "negative_signals": ["SeSinglePrivilegeCheck", "SePrivilegeCheck", "IoValidateDeviceIoControlAccess"],
+      "score": 16,
+      "review": "Recover the final ACL. Confirm whether World/Authenticated Users get read/write access to privileged device paths."
+    },
+    {
+      "id": "callback_or_filter_tamper",
+      "name": "Security callback or filter tamper surface",
+      "description": "Driver registers or interacts with process/thread/image callbacks, object callbacks, registry callbacks, or filter callbacks.",
+      "signals": ["PsSetCreateProcessNotifyRoutine", "PsSetCreateThreadNotifyRoutine", "PsSetLoadImageNotifyRoutine", "ObRegisterCallbacks", "CmRegisterCallback", "FltRegisterFilter", "FltStartFiltering", "EtwRegister"],
+      "min_hits": 1,
+      "negative_signals": ["SeSinglePrivilegeCheck", "IoValidateDeviceIoControlAccess"],
+      "score": 14,
+      "review": "Check whether IOCTLs can disable, patch, unregister, or redirect callbacks and whether callback state is caller-controlled."
+    },
+    {
+      "id": "firmware_pci_config",
+      "name": "Firmware, PCI config, or bus access",
+      "description": "Driver accesses PCI config space, firmware tables, SMBIOS, or low-level bus interfaces.",
+      "signals": ["HalGetBusData", "HalSetBusData", "HalGetBusDataByOffset", "HalSetBusDataByOffset", "IoGetDeviceProperty", "IRP_MN_READ_CONFIG", "IRP_MN_WRITE_CONFIG", "SMBIOS", "ACPI", "PCI"],
+      "min_hits": 2,
+      "negative_signals": ["SeSinglePrivilegeCheck", "IoValidateDeviceIoControlAccess"],
+      "score": 16,
+      "review": "Verify whether bus/device/function, offset, width, and write values are caller-controlled. Check admin-only gating."
+    },
+    {
+      "id": "unsafe_copy_length",
+      "name": "Unsafe copy or length arithmetic",
+      "description": "Driver uses copy/format routines or arithmetic patterns that may create overflow, OOB, or info leak conditions.",
+      "signals": ["memcpy", "memmove", "RtlCopyMemory", "RtlMoveMemory", "strcpy", "strncpy", "sprintf", "swprintf", "RtlStringCb", "InputBufferLength", "OutputBufferLength", "Parameters.DeviceIoControl"],
+      "min_hits": 2,
+      "negative_signals": ["RtlSizeTAdd", "RtlULongAdd", "ProbeForRead", "ProbeForWrite", "__try", "IoValidateDeviceIoControlAccess"],
+      "score": 16,
+      "review": "Check integer truncation, signed/unsigned comparisons, output buffer lengths, and whether copy size derives from user input."
+    },
+    {
+      "id": "info_leak_debug_telemetry",
+      "name": "Information leak through debug or telemetry paths",
+      "description": "Driver may disclose kernel pointers, physical addresses, MSRs, or privileged state through debug, ETW, WPP, or query IOCTLs.",
+      "signals": ["DbgPrint", "DbgPrintEx", "EtwWrite", "EtwWriteTransfer", "WPP", "TraceLoggingWrite", "%p", "MmGetPhysicalAddress", "KeQueryPerformanceCounter"],
+      "min_hits": 2,
+      "negative_signals": ["SeSinglePrivilegeCheck", "IoValidateDeviceIoControlAccess"],
+      "score": 10,
+      "review": "Review query/readback paths for kernel pointer, physical address, handle, token, or privileged state disclosure to low-privileged callers."
+    },
+    {
+      "id": "missing_privilege_gate",
+      "name": "Missing privilege gate around privileged primitive",
+      "description": "A privileged primitive appears without nearby explicit privilege or IOCTL access validation signals.",
+      "signals": ["ExGetPreviousMode", "PreviousMode", "RequestorMode", "Irp->RequestorMode", "IoGetRequestorProcess", "IoGetRequestorProcessId"],
+      "min_hits": 1,
+      "negative_signals": ["SeSinglePrivilegeCheck", "SePrivilegeCheck", "IoValidateDeviceIoControlAccess", "FILE_READ_ACCESS", "FILE_WRITE_ACCESS"],
+      "score": 6,
+      "review": "Use this only with another primitive family. Confirm whether the branch rejects user-mode callers or only observes caller mode."
+    },
+    {
+      "id": "physical_section_object",
+      "name": "PhysicalMemory section or section-object mapping",
+      "description": "Driver references section objects or physical-memory sections that may enable sensitive mapping or disclosure if IOCTL-reachable.",
+      "signals": ["\\\\Device\\\\PhysicalMemory", "ZwOpenSection", "ZwMapViewOfSection", "MmMapViewInSystemSpace", "MmUnmapViewInSystemSpace", "SECTION_MAP_READ", "SECTION_MAP_WRITE"],
+      "min_hits": 2,
+      "negative_signals": ["SeSinglePrivilegeCheck", "SePrivilegeCheck", "IoValidateDeviceIoControlAccess"],
+      "score": 24,
+      "review": "Rare/high-value axis: verify whether section names, handles, offsets, and protections are caller-controlled and whether user callers are rejected."
+    },
+    {
+      "id": "firmware_environment",
+      "name": "Firmware environment variable access",
+      "description": "Driver can read or write UEFI/NVRAM-style firmware variables or system environment state.",
+      "signals": ["ExGetFirmwareEnvironmentVariable", "ExSetFirmwareEnvironmentVariable", "ZwQuerySystemEnvironmentValue", "ZwSetSystemEnvironmentValue", "ZwSetSystemEnvironmentValueEx"],
+      "min_hits": 1,
+      "negative_signals": ["SeSystemEnvironmentPrivilege", "SeSinglePrivilegeCheck", "SePrivilegeCheck", "IoValidateDeviceIoControlAccess"],
+      "score": 22,
+      "review": "Rare axis: validate variable name/GUID/value origin and whether SeSystemEnvironmentPrivilege or admin-only checks are enforced."
+    },
+    {
+      "id": "legacy_dma_adapter",
+      "name": "Legacy DMA adapter or scatter/gather control",
+      "description": "Driver uses DMA adapter APIs where map registers, transfer lengths, or physical mappings may cross authorization boundaries.",
+      "signals": ["IoGetDmaAdapter", "AllocateAdapterChannel", "MapTransfer", "FlushAdapterBuffers", "FreeAdapterChannel", "GetScatterGatherList", "BuildScatterGatherList", "DmaOperations"],
+      "min_hits": 2,
+      "negative_signals": ["IoValidateDeviceIoControlAccess", "SeSinglePrivilegeCheck"],
+      "score": 20,
+      "review": "Rare axis: check whether user input can steer DMA addresses, transfer length, direction, or common-buffer lifetime."
+    },
+    {
+      "id": "system_information_write",
+      "name": "System-wide privileged configuration calls",
+      "description": "Driver invokes privileged Zw/Nt system-information or debug-control operations that may become EoP when caller-controlled.",
+      "signals": ["ZwSetSystemInformation", "ZwSystemDebugControl", "ZwLoadDriver", "ZwUnloadDriver", "ZwSetInformationProcess", "ZwSetInformationThread"],
+      "min_hits": 1,
+      "negative_signals": ["SeLoadDriverPrivilege", "SeDebugPrivilege", "SeSinglePrivilegeCheck", "SePrivilegeCheck", "IoValidateDeviceIoControlAccess"],
+      "score": 24,
+      "review": "Rare/high-value axis: confirm class IDs, handles, buffers, and privilege checks. Build dynamic proof around direct-denial vs driver-mediated reachability."
+    },
+    {
+      "id": "minifilter_user_comm",
+      "name": "Minifilter user communication boundary",
+      "description": "Minifilter communication ports can expose privileged file-system actions or kernel data to user clients.",
+      "signals": ["FltCreateCommunicationPort", "FltCloseCommunicationPort", "FltSendMessage", "FltGetMessage", "FltReplyMessage", "FltRegisterFilter", "FltStartFiltering"],
+      "min_hits": 2,
+      "negative_signals": ["SeSinglePrivilegeCheck", "FltBuildDefaultSecurityDescriptor", "IoValidateDeviceIoControlAccess"],
+      "score": 18,
+      "review": "Check port SDDL, accepted clients, message schema, impersonation, and whether low-privileged clients can trigger privileged file-system actions."
+    },
+    {
+      "id": "lifetime_race_cancel",
+      "name": "IRP lifetime, cancel routine, or remove-lock race",
+      "description": "Driver has cancellation, remove-lock, or work-item patterns that can create UAF/race candidates in complex IOCTL paths.",
+      "signals": ["IoSetCancelRoutine", "IoCancelIrp", "IoAcquireCancelSpinLock", "IoReleaseCancelSpinLock", "IoInitializeRemoveLock", "IoAcquireRemoveLock", "IoReleaseRemoveLock", "IoReleaseRemoveLockAndWait", "ExQueueWorkItem", "IoQueueWorkItem"],
+      "min_hits": 3,
+      "negative_signals": ["IoReleaseRemoveLockAndWait", "ExAcquireRundownProtection", "ExReleaseRundownProtection"],
+      "score": 14,
+      "review": "Rare bug-class axis: use this to guide code review and stress testing, not as a standalone vulnerability claim."
+    },
+    {
+      "id": "hypervisor_or_secure_kernel_surface",
+      "name": "Hypervisor, VTL, or secure-kernel interface",
+      "description": "Driver interacts with hypervisor/VTL/security-isolation interfaces where input validation bugs can have high impact.",
+      "signals": ["Hvl", "HvCall", "Vmb", "Vtl", "IsSecureKernel", "WinHv", "Vid", "VMBus", "SecureKernel", "KeIsExecutingDpc"],
+      "min_hits": 2,
+      "negative_signals": ["SeSinglePrivilegeCheck", "IoValidateDeviceIoControlAccess"],
+      "score": 16,
+      "review": "Rare axis: map the interface boundary carefully. Look for user-controlled hypercall parameters, shared memory descriptors, or VMBus channel state."
+    },
+    {
+      "id": "object_namespace_confusion",
+      "name": "Object namespace or symbolic-link confusion",
+      "description": "Driver creates or opens named kernel objects, symbolic links, events, sections, or interfaces that can cross privilege boundaries.",
+      "signals": ["IoCreateSymbolicLink", "IoRegisterDeviceInterface", "ZwCreateSymbolicLinkObject", "ZwOpenSymbolicLinkObject", "ZwCreateEvent", "ZwOpenEvent", "ZwCreateSection", "ZwOpenSection", "\\\\BaseNamedObjects\\\\", "\\\\GLOBAL??\\\\"],
+      "min_hits": 2,
+      "negative_signals": ["OBJ_KERNEL_HANDLE", "SeSinglePrivilegeCheck", "IoCreateDeviceSecure"],
+      "score": 16,
+      "review": "Rare axis: inspect namespace, security descriptor, object lifetime, impersonation, and whether low-privileged users can pre-create or replace objects."
+    },
+    {
+      "id": "impersonation_boundary",
+      "name": "Impersonation or client-security boundary",
+      "description": "Driver creates client security contexts or impersonates requestors, which can become EoP when requestor identity or access mode is mishandled.",
+      "signals": ["SeImpersonateClient", "PsImpersonateClient", "SeCreateClientSecurity", "SeCreateClientSecurityFromSubjectContext", "PsReferenceImpersonationToken", "SECURITY_CLIENT_CONTEXT", "ImpersonationLevel"],
+      "min_hits": 2,
+      "negative_signals": ["SePrivilegeCheck", "SeSinglePrivilegeCheck", "ExGetPreviousMode", "IoValidateDeviceIoControlAccess"],
+      "score": 22,
+      "review": "Rare axis: verify impersonation level, requestor mode, token source, revert paths, and whether low-privileged clients can cause privileged filesystem/registry/object actions."
+    },
+    {
+      "id": "kernel_patch_or_exec_mapping",
+      "name": "Executable mapping or kernel patch surface",
+      "description": "Driver resolves kernel routines, changes page protections, or references executable mappings that may enable BYOVD-style patching when caller-controlled.",
+      "signals": ["MmGetSystemRoutineAddress", "MmProtectMdlSystemAddress", "ZwProtectVirtualMemory", "PAGE_EXECUTE_READWRITE", "CR0", "WriteProtect", "PsInitialSystemProcess"],
+      "min_hits": 2,
+      "negative_signals": ["SeDebugPrivilege", "SeSinglePrivilegeCheck", "SePrivilegeCheck", "IoValidateDeviceIoControlAccess"],
+      "score": 24,
+      "review": "Rare/high-value axis: confirm whether addresses, routine names, protection flags, or MDLs are caller-controlled. Do not treat routine resolution alone as a vulnerability."
+    },
+    {
+      "id": "wmi_etw_control_plane",
+      "name": "WMI, ETW, or telemetry control plane",
+      "description": "Driver exposes WMI/ETW control or telemetry paths that may leak kernel state or trigger privileged behavior.",
+      "signals": ["IoWMIRegistrationControl", "WmiSystemControl", "EtwRegister", "EtwWrite", "EtwWriteTransfer", "TraceLoggingWrite", "WMIREGINFO"],
+      "min_hits": 2,
+      "negative_signals": ["SeSinglePrivilegeCheck", "IoValidateDeviceIoControlAccess"],
+      "score": 14,
+      "review": "Rare axis: inspect provider security, query/set GUID handlers, event payloads, kernel pointer disclosure, and whether low-privileged clients can set privileged state."
+    },
+    {
+      "id": "alpc_port_boundary",
+      "name": "ALPC or named port boundary",
+      "description": "Driver or support component references ALPC named ports or message attributes that can cross user/kernel privilege boundaries.",
+      "signals": ["ZwAlpcCreatePort", "ZwAlpcConnectPort", "ZwAlpcSendWaitReceivePort", "ALPC_PORT_ATTRIBUTES", "ALPC_MESSAGE_ATTRIBUTES", "\\\\RPC Control\\\\"],
+      "min_hits": 2,
+      "negative_signals": ["SeSinglePrivilegeCheck", "SePrivilegeCheck", "OBJ_KERNEL_HANDLE"],
+      "score": 18,
+      "review": "Rare axis: verify port SDDL, accepted clients, message schema, impersonation, handle passing, and whether low-privileged clients can trigger privileged operations."
+    }
+  ],
+  "filename_profiles": {
+    "iqvw64e.sys": {"name": "iqvw64e.sys", "vendor": "Intel", "family": "Intel network utility driver", "primitives": ["kernel_code_mapping", "kernel_memory_rw", "physmem_map"], "cves": ["CVE-2015-2291"], "projects": ["kdmapper"], "notes": "Diagnostic/network utility driver frequently abused for BYOVD-style unsigned driver mapping.", "aliases": ["Nal"], "source": "user_seed"},
+    "gdrv.sys": {"name": "gdrv.sys", "vendor": "Gigabyte", "family": "Gigabyte hardware utility", "primitives": ["kernel_memory_rw", "physmem_map"], "cves": ["CVE-2018-19320"], "projects": ["public BYOVD PoCs"], "notes": "Hardware management driver associated with arbitrary kernel read/write IOCTL patterns.", "source": "user_seed"},
+    "rtcore64.sys": {"name": "RTCore64.sys", "vendor": "MSI", "family": "MSI hardware control", "primitives": ["physmem_map", "msr_control", "port_io"], "cves": ["CVE-2019-16098"], "projects": ["BYOVD LPE PoCs"], "notes": "Motherboard control driver associated with physical memory and MSR access.", "source": "user_seed"},
+    "winring0.sys": {"name": "WinRing0.sys", "vendor": "OpenLibSys", "family": "Low-level hardware access", "primitives": ["msr_control", "port_io", "physmem_map"], "cves": ["CVE-2020-14979"], "projects": ["hardware monitoring BYOVD PoCs"], "notes": "Generic low-level hardware library driver with broad hardware primitives.", "source": "user_seed"},
+    "zam64.sys": {"name": "zam64.sys / zamguard64.sys", "vendor": "Zemana", "family": "Anti-malware process control", "primitives": ["process_kill"], "cves": [], "projects": ["Terminator"], "notes": "Anti-malware driver family abused for terminating processes.", "aliases": ["zamguard64.sys"], "source": "user_seed"},
+    "tfsysmon.sys": {"name": "TfSysMon.sys", "vendor": "ThreatFire", "family": "System monitoring / EDR bypass", "primitives": ["process_kill", "callback_or_filter_tamper"], "cves": [], "projects": ["EDRKillShifter"], "notes": "Monitoring driver associated with process termination and security callback disruption.", "source": "user_seed"},
+    "dbk64.sys": {"name": "dbk64.sys", "vendor": "Cheat Engine", "family": "Process memory access", "primitives": ["process_memory_rw", "kernel_memory_rw"], "cves": [], "projects": ["Cheat Engine"], "notes": "Cheat Engine driver associated with process memory read/write capabilities.", "source": "user_seed"},
+    "mhyprot2.sys": {"name": "mhyprot2.sys", "vendor": "miHoYo", "family": "Anti-cheat memory access", "primitives": ["kernel_memory_rw", "process_memory_rw"], "cves": [], "projects": ["BlackByte abuse reports"], "notes": "Anti-cheat driver reported in BYOVD/ransomware abuse chains.", "source": "user_seed"},
+    "procexp.sys": {"name": "procexp.sys", "vendor": "Sysinternals", "family": "Process control utility", "primitives": ["process_kill"], "cves": [], "projects": ["Process Explorer"], "notes": "Process utility driver; prioritize access control around process termination operations.", "source": "user_seed"},
+    "asrdrv104.sys": {"name": "asrdrv104.sys", "vendor": "ASRock", "family": "ASRock hardware utility", "primitives": ["physmem_map", "kernel_memory_rw"], "cves": ["CVE-2020-15368"], "projects": ["public ASRock exploit"], "notes": "ASRock driver class associated with physical memory access.", "aliases": ["asr drv104.sys", "asrdrv.sys"], "source": "user_seed"},
+    "eneio64.sys": {"name": "eneio64.sys", "vendor": "ENE Technology", "family": "RGB/hardware control", "primitives": ["physmem_map", "kernel_memory_rw"], "cves": [], "projects": ["public exploit"], "notes": "RGB control driver associated with physical memory read/write primitives.", "source": "user_seed"},
+    "tvicport64.sys": {"name": "TVicPort64.sys", "vendor": "TVicSoft", "family": "Port I/O access", "primitives": ["port_io", "kernel_memory_rw"], "cves": [], "projects": ["service-load PoCs"], "notes": "Port access driver; prioritize caller-controlled port/register operations.", "source": "user_seed"},
+    "devhost.sys": {"name": "devhost.sys", "vendor": "Unknown", "family": "Attestation signed arbitrary read", "primitives": ["arbitrary_read"], "cves": [], "projects": ["service-load PoCs"], "notes": "WHQL/attestation-signed profile associated with arbitrary memory read.", "source": "user_seed"},
+    "vsdatant.sys": {"name": "vsdatant.sys", "vendor": "Check Point ZoneAlarm", "family": "Firewall / protection bypass", "primitives": ["lpe", "memory_integrity_bypass"], "cves": [], "projects": ["BYOVD abuse reports"], "notes": "Firewall driver profile associated with BYOVD privilege/protection bypass.", "source": "user_seed"},
+    "bdapiutil64.sys": {"name": "BdApiUtil64.sys", "vendor": "Baidu", "family": "Antivirus process control", "primitives": ["process_kill"], "cves": ["CVE-2024-51324"], "projects": ["BdApiUtil-Killer"], "notes": "Antivirus utility driver associated with process termination.", "source": "user_seed"},
+    "ardrv.sys": {"name": "ardrv.sys", "vendor": "OPSWAT AppRemover", "family": "App remover process control", "primitives": ["process_kill"], "cves": [], "projects": ["AppRemover-Killer"], "notes": "App remover driver associated with terminating processes.", "aliases": ["ard rv.sys"], "source": "user_seed"},
+    "astra64.sys": {"name": "astra64.sys", "vendor": "EnTech Taiwan", "family": "Hardware diagnostic", "primitives": ["kernel_memory_rw"], "cves": [], "projects": ["Astra64-RW"], "notes": "Diagnostic driver profile associated with kernel read/write.", "source": "user_seed"},
+    "ccprotect.sys": {"name": "CcProtect.sys", "vendor": "CnCrypt", "family": "Protection driver process control", "primitives": ["process_kill"], "cves": [], "projects": ["CcProtect-Killer"], "notes": "Protection driver profile associated with process termination.", "source": "user_seed"},
+    "gamedriverx64.sys": {"name": "GameDriverX64.sys", "vendor": "Fedeen Games", "family": "Game driver process control", "primitives": ["process_kill"], "cves": ["CVE-2025-61155"], "projects": ["GameDriverX64-Killer"], "notes": "Game driver profile associated with process termination.", "source": "user_seed"},
+    "goflydrv.sys": {"name": "GoFlyDrv.sys", "vendor": "Golink", "family": "VPN accelerator process control", "primitives": ["process_kill"], "cves": [], "projects": ["GoFlyDrv-Killer"], "notes": "VPN/accelerator driver profile associated with process termination.", "source": "user_seed"},
+    "k7rkscan.sys": {"name": "K7RKScan.sys", "vendor": "K7 Computing", "family": "Antivirus process control", "primitives": ["lpe", "process_kill"], "cves": ["CVE-2025-52915", "CVE-2025-1055"], "projects": ["K7Terminator"], "notes": "Antivirus driver profile associated with LPE/process termination.", "source": "user_seed"},
+    "ksapi64.sys": {"name": "ksapi64.sys / ksapi64_del.sys", "vendor": "Kingsoft", "family": "Antivirus process control", "primitives": ["process_kill"], "cves": [], "projects": ["Ksapi64-Killer"], "notes": "Kingsoft driver family associated with process termination.", "aliases": ["ksapi64_del.sys"], "source": "user_seed"},
+    "nseckrnl.sys": {"name": "NSecKrnl.sys", "vendor": "NSEC", "family": "Security driver process control", "primitives": ["process_kill", "callback_or_filter_tamper"], "cves": [], "projects": ["NSec-Killer", "ValleyRAT BYOVD reports"], "notes": "Security driver profile associated with BYOVD process/security disablement.", "source": "user_seed"},
+    "pctcore64.sys": {"name": "PCTcore64.sys", "vendor": "PC Tools", "family": "Security utility process control", "primitives": ["process_kill"], "cves": ["CVE-2026-8501"], "projects": ["PCTcore64-Killer"], "notes": "PC Tools driver profile associated with process termination.", "source": "user_seed"},
+    "poisonx.sys": {"name": "PoisonX.sys", "vendor": "Microsoft/test or legacy attribution", "family": "Process control", "primitives": ["process_kill"], "cves": [], "projects": ["PoisonX-Killer"], "notes": "Profile seed associated with process termination; verify attribution carefully.", "source": "user_seed"},
+    "stprocessmonitor.sys": {"name": "STProcessMonitor.sys", "vendor": "Safetica", "family": "Process monitoring/control", "primitives": ["process_kill"], "cves": ["CVE-2025-70795"], "projects": ["STProcessMonitor-Killer"], "notes": "Monitoring driver profile associated with process termination.", "source": "user_seed"},
+    "viragt64.sys": {"name": "viragt64.sys", "vendor": "Tg Soft", "family": "Virtualization/process control", "primitives": ["process_kill"], "cves": [], "projects": ["Viragt64-Killer"], "notes": "Driver profile associated with process termination.", "source": "user_seed"},
+    "wsftprm.sys": {"name": "Wsftprm.sys", "vendor": "Unknown", "family": "Device management process control", "primitives": ["process_kill"], "cves": [], "projects": ["Wsftprm-Killer"], "notes": "Profile seed associated with process termination.", "source": "user_seed"},
+    "rwdrv.sys": {"name": "rwdrv.sys / RWDrv.sys", "vendor": "Unknown", "family": "Read/write memory driver", "primitives": ["kernel_memory_rw"], "cves": [], "projects": ["Qilin abuse reports", "Warlock abuse reports"], "notes": "Read/write driver profile associated with ransomware BYOVD abuse.", "aliases": ["RWDrv.sys"], "source": "user_seed"},
+    "hlpdrv.sys": {"name": "hlpdrv.sys", "vendor": "Unknown", "family": "Helper memory driver", "primitives": ["kernel_memory_rw"], "cves": [], "projects": ["BYOVD abuse reports"], "notes": "Helper driver profile associated with system memory access.", "source": "user_seed"},
+    "throttlestop.sys": {"name": "ThrottleStop.sys", "vendor": "ThrottleStop", "family": "CPU control hardware driver", "primitives": ["msr_control", "port_io"], "cves": [], "projects": ["ThrottleStop"], "notes": "CPU throttling driver profile associated with MSR/I/O operations.", "source": "user_seed"},
+    "sysinfodetectorx64.sys": {"name": "SysInfoDetectorX64.sys", "vendor": "Unknown", "family": "System detection memory read", "primitives": ["arbitrary_read"], "cves": [], "projects": ["detection rule references"], "notes": "System information driver profile associated with memory read.", "source": "user_seed"},
+    "fh-ethercat_dio.sys": {"name": "Fh-ethercat_dio.sys", "vendor": "Industrial control", "family": "Industrial I/O", "primitives": ["port_io", "kernel_memory_rw"], "cves": [], "projects": ["blocklist references"], "notes": "Industrial hardware driver profile associated with unrestricted I/O or memory access.", "source": "user_seed"},
+    "lnvmsrio.sys": {"name": "LnvMSRIO.sys", "vendor": "Lenovo", "family": "Lenovo MSR/I/O", "primitives": ["msr_control"], "cves": ["CVE-2025-8061"], "projects": ["BYOVD exploits"], "notes": "Lenovo management driver profile associated with MSR access.", "source": "user_seed"},
+    "msio.sys": {"name": "MsIo.sys", "vendor": "Microsoft/unknown attribution", "family": "I/O access", "primitives": ["port_io", "lpe"], "cves": [], "projects": ["MsIoExploit"], "notes": "I/O driver profile associated with privilege or hardware access paths.", "source": "user_seed"},
+    "hwpnp.sys": {"name": "HwPnp.sys", "vendor": "Unknown", "family": "PnP memory access", "primitives": ["kernel_memory_rw"], "cves": [], "projects": ["public PoCs"], "notes": "Plug-and-play hardware profile associated with memory read/write.", "source": "user_seed"},
+    "nvstreamkms.sys": {"name": "NvStreamKms.sys", "vendor": "NVIDIA", "family": "NVIDIA streaming kernel surface", "primitives": ["kernel_code_execution"], "cves": [], "projects": ["BYOVD abuse reports"], "notes": "Streaming driver profile associated with kernel execution paths.", "source": "user_seed"},
+    "asmmap64.sys": {"name": "ASMMAP64.sys", "vendor": "ASUS", "family": "ASUS hardware access", "primitives": ["kernel_memory_rw", "physmem_map"], "cves": [], "projects": ["ASUS LPE PoCs"], "notes": "ASUS hardware driver profile associated with kernel read/write.", "source": "user_seed"},
+    "glckio2.sys": {"name": "GLCKIO2.sys", "vendor": "Gigabyte", "family": "Gigabyte overclocking", "primitives": ["msr_control", "kernel_memory_rw"], "cves": [], "projects": ["BYOVD abuse reports"], "notes": "Overclocking driver profile associated with MSR and memory access.", "source": "user_seed"},
+    "phymemx64.sys": {"name": "PhyMemx64.sys", "vendor": "Unknown", "family": "Physical memory access", "primitives": ["physmem_map", "kernel_memory_rw"], "cves": [], "projects": ["forensic and BYOVD tools"], "notes": "Physical memory driver profile.", "source": "user_seed"},
+    "dbutil_2_3.sys": {"name": "Dbutil_2_3.sys", "vendor": "Dell", "family": "Dell BIOS utility", "primitives": ["kernel_write", "kernel_memory_rw"], "cves": ["CVE-2021-21551"], "projects": ["Dell dbutil exploits"], "notes": "Dell BIOS utility driver associated with memory write vulnerability class.", "source": "user_seed"},
+    "dcidrv.sys": {"name": "dci drv.sys", "vendor": "Intel", "family": "Intel controller/register access", "primitives": ["port_io", "kernel_memory_rw"], "cves": [], "projects": ["BYOVD abuse reports"], "notes": "Intel controller driver profile associated with register/memory access.", "aliases": ["dci drv.sys"], "source": "user_seed"},
+    "hwinfo64.sys": {"name": "HWiNFO64.sys", "vendor": "HWiNFO", "family": "Hardware monitoring", "primitives": ["kernel_memory_rw", "msr_control", "port_io"], "cves": [], "projects": ["HWiNFO"], "notes": "Hardware monitoring driver profile associated with low-level access.", "source": "user_seed"},
+    "cpuz.sys": {"name": "CPUZ.sys", "vendor": "CPUID", "family": "CPU diagnostic", "primitives": ["msr_control", "physmem_map"], "cves": [], "projects": ["CPU-Z PoCs"], "notes": "CPU diagnostic driver profile associated with MSR and memory access.", "source": "user_seed"},
+    "aida64.sys": {"name": "AIDA64.sys", "vendor": "FinalWire", "family": "Hardware diagnostic", "primitives": ["kernel_memory_rw", "msr_control", "port_io"], "cves": [], "projects": ["AIDA64"], "notes": "Diagnostic hardware driver profile with broad low-level access.", "source": "user_seed"},
+    "speedfan.sys": {"name": "SpeedFan.sys", "vendor": "Almico", "family": "Fan control I/O", "primitives": ["port_io"], "cves": [], "projects": ["SpeedFan PoCs"], "notes": "Fan control driver profile associated with I/O access.", "source": "user_seed"},
+    "siv64x.sys": {"name": "SIV64X.sys", "vendor": "Ray Hinchliffe", "family": "System information viewer", "primitives": ["kernel_memory_rw", "msr_control", "port_io"], "cves": [], "projects": ["SIV"], "notes": "System information driver profile associated with memory/register access.", "source": "user_seed"},
+    "hwrwdrv.sys": {"name": "HwRwDrv.sys", "vendor": "Unknown", "family": "Hardware read/write", "primitives": ["kernel_memory_rw", "physmem_map", "port_io"], "cves": [], "projects": ["BYOVD abuse reports"], "notes": "Hardware read/write driver profile.", "source": "user_seed"},
+    "unknown.sys": {"name": "Unknown.sys", "vendor": "Unknown", "family": "Unknown process control", "primitives": ["process_kill"], "cves": [], "projects": ["UnknownKiller"], "notes": "Generic placeholder profile from user seed; verify identity before relying on it.", "source": "user_seed"}
+  },
+  "lol_drivers": {
+    "api_json": "https://www.loldrivers.io/api/drivers.json",
+    "site": "https://www.loldrivers.io/",
+    "github": "https://github.com/magicsword-io/LOLDrivers",
+    "match_fields": ["SHA256", "SHA1", "MD5", "Filename", "OriginalFilename"]
+  }
+}
