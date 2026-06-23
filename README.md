@@ -5,6 +5,18 @@ vulnerability research. It builds a review queue from static signals and known
 BYOVD-style driver families, then correlates those signals against unknown
 drivers.
 
+
+
+
+## Media
+
+
+<img width="2080" height="790" alt="image" src="https://github.com/user-attachments/assets/d332e7a4-0cab-4330-a74f-ab828e5142f7" />
+<img width="2071" height="965" alt="image" src="https://github.com/user-attachments/assets/85fe6f3c-6e3d-4b3c-b4c0-ba039bb23087" />
+<img width="1067" height="1341" alt="image" src="https://github.com/user-attachments/assets/e9e39abb-7db7-4083-9cf9-d4e1062f7a11" />
+
+
+
 ## What it does
 
 - Finds risky imports, strings, instructions, and IOCTL constants.
