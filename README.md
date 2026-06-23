@@ -189,3 +189,8 @@ Run the quick checks with:
 python -m unittest discover -s tests
 python -m py_compile ida_plugin\dragon_reverse.py ida_plugin\dragon_reverse_logic.py tools\dragon_reverse_corpus_scan.py tools\dragon_reverse_shared.py
 ```
+
+
+
+⚠️ Disclaimer
+This tool is developed for authorized security research, bug bounty hunting, and educational purposes only. The author (Leksa667) is not responsible for any illegal use or damage caused by this software. Use it at your own risk within legal and authorized boundaries.
