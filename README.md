@@ -1,4 +1,4 @@
-This repository played a key role in my research, ultimately helping me discover and responsibly disclose **CVE-2026-83942**, now acknowledged by Microsoft MSRC.
+This repository played a key role in my research, ultimately helping me discover and responsibly disclose **CVE-2026-83942**, now acknowledged by Microsoft MSRC https://msrc.microsoft.com/update-guide/vulnerability/CVE-2026-83942 
 Of course, I now have a much more powerful private version, but this public release is already quite capable. Feel free to improve, modify, and build upon it as you see fit. Enjoy!
 
 # Dragon Reverse
