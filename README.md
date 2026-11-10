@@ -1,3 +1,6 @@
+This repository played a key role in my research, ultimately helping me discover and responsibly disclose **CVE-2026-83942**, now acknowledged by Microsoft MSRC.
+Of course, I now have a much more powerful private version, but this public release is already quite capable. Feel free to improve, modify, and build upon it as you see fit. Enjoy!
+
 # Dragon Reverse
 
 Dragon Reverse is an IDA Pro 9.2+ plugin for authorized Windows driver
